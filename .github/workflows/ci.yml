@@ -8,6 +8,9 @@ jobs:
     name: Build Docker image
     runs-on: ubuntu-latest
     environment: dev
+    permissions:
+      id-token: write
+      contents: read
     steps:
     
     - uses: actions/checkout@v4
