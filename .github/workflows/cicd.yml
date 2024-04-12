@@ -46,3 +46,4 @@ jobs:
         containerAppEnvironment: python-aca
         resourceGroup: aca-python
         imageToDeploy: ${{ secrets.REGISTRY_URL }}/aca-python:latest
+        environmentVariables: "APPLICATIONINSIGHTS_CONNECTION_STRING=secretref:applicationinsights-connection-string"
