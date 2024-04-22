@@ -1,11 +1,12 @@
 import os
+import random
 from fastapi import FastAPI, Request, HTTPException
 from pydantic import BaseModel
 from logging import getLogger, DEBUG
 from azure.monitor.opentelemetry import configure_azure_monitor
-from opentelemetry import metrics
+from azure.monitor.events.extension import track_event
+from opentelemetry import metrics, trace
 from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
-import random
 
 configure_azure_monitor(
     connection_string=os.getenv("APPLICATIONINSIGHTS_CONNECTION_STRING")
@@ -13,6 +14,8 @@ configure_azure_monitor(
 
 logger = getLogger(__name__)
 logger.setLevel(DEBUG)
+
+tracer = trace.get_tracer(__name__)
 
 meter = metrics.get_meter_provider().get_meter("items")
 create_counter = meter.create_counter(
@@ -59,6 +62,12 @@ fake_items_db = [
 
 @app.get("/items/")
 async def all_items(request: Request):
+    span = trace.get_current_span()
+    span.set_attribute("enduser.id", "testuser")
+    span.set_attribute("CustomDimension1", "Value1")
+
+    track_event("Test event", {"key1": "value1", "key2": "value2"})
+
     logger.info("all_items called")
     logger.info("Returning all items")
     return fake_items_db
