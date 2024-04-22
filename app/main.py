@@ -62,13 +62,17 @@ fake_items_db = [
 
 @app.get("/items/")
 async def all_items(request: Request):
+    logger.info("all_items called")
+
     span = trace.get_current_span()
     span.set_attribute("enduser.id", "testuser")
     span.set_attribute("CustomDimension1", "Value1")
 
     track_event("Test event", {"key1": "value1", "key2": "value2"})
 
-    logger.info("all_items called")
+    for k, v in request.headers.items():
+        logger.info(f"{k}: {v}")
+
     logger.info("Returning all items")
     return fake_items_db
 
