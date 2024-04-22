@@ -65,7 +65,12 @@ async def all_items(request: Request):
     logger.info("all_items called")
 
     span = trace.get_current_span()
-    span.set_attribute("enduser.id", "testuser")
+
+    if "x-ms-client-principal-name" in request.headers:
+        span.set_attribute("enduser.id", request.headers["x-ms-client-principal-name"])
+    else:
+        span.set_attribute("enduser.id", "anonymous")
+
     span.set_attribute("CustomDimension1", "Value1")
 
     track_event("Test event", {"key1": "value1", "key2": "value2"})
