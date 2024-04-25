@@ -66,8 +66,8 @@ async def all_items(request: Request):
 
     span = trace.get_current_span()
 
-    if "x-ms-client-principal-name" in request.headers:
-        span.set_attribute("enduser.id", request.headers["x-ms-client-principal-name"])
+    if "x-ms-client-principal-id" in request.headers:
+        span.set_attribute("enduser.id", request.headers["x-ms-client-principal-id"])
     else:
         span.set_attribute("enduser.id", "anonymous")
 
