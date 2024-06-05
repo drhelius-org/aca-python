@@ -40,7 +40,7 @@ creation_histogram = meter.create_histogram(
 )
 
 app = FastAPI()
-FastAPIInstrumentor.instrument_app(app)
+#FastAPIInstrumentor.instrument_app(app)
 
 class Item(BaseModel):
     name: str
@@ -59,6 +59,15 @@ fake_items_db = [
         "id": 555
     }
 ]
+
+@app.get("/hello")
+async def test():
+    return {"message": "Hello World"}
+
+
+@app.get("/exception")
+async def exception():
+    raise Exception("Hit an exception")
 
 @app.get("/items/")
 async def all_items(request: Request):
@@ -91,6 +100,7 @@ async def read_item(request: Request, item_name: str):
             break
     if item is None:
         logger.error("Item not found")
+        logger.exception("Item not found exception")
         raise HTTPException(status_code=404, detail="Item not found")
     logger.info(f"Returning item {item_name}")
     query_counter.add(1)
