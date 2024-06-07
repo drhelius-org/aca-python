@@ -1,7 +1,4 @@
-#0.111.0
-fastapi == 0.110.1
-#0.30.1
-uvicorn == 0.29.0
-#1.5.0
+fastapi == 0.111.0
+uvicorn == 0.30.1
 azure-monitor-opentelemetry == 1.5.0
 azure-monitor-events-extension == 0.1.0

@@ -1,119 +1,105 @@
 import os
 import random
-from fastapi import FastAPI, Request, HTTPException
-from pydantic import BaseModel
+import time
+import json
+
 from logging import getLogger, DEBUG
-from azure.monitor.opentelemetry import configure_azure_monitor
-from azure.monitor.events.extension import track_event
+
 from opentelemetry import metrics, trace
 from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
+
+from azure.monitor.opentelemetry import configure_azure_monitor
+from azure.monitor.events.extension import track_event
+
+from fastapi import FastAPI, Request, HTTPException
+from fastapi.responses import PlainTextResponse
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
 configure_azure_monitor(
     connection_string=os.getenv("APPLICATIONINSIGHTS_CONNECTION_STRING")
 )
 
+tracer = trace.get_tracer(__name__)
 logger = getLogger(__name__)
 logger.setLevel(DEBUG)
-
-tracer = trace.get_tracer(__name__)
-
 meter = metrics.get_meter_provider().get_meter("items")
-create_counter = meter.create_counter(
-    name="items_created",
-    description="Number of items created",
+
+sample_counter = meter.create_counter(
+    name="sample_counter",
+    description="A sample counter",
     unit="1"
 )
-query_counter = meter.create_counter(
-    name="items_queried",
-    description="Number of items queried",
-    unit="1"
-)
-query_histogram = meter.create_histogram(
-    name="items_query_time",
-    description="Time taken to query an item",
-    unit="ms",
-)
-creation_histogram = meter.create_histogram(
-    name="items_creation_time",
-    description="Time taken to create an item",
+
+sample_histogram = meter.create_histogram(
+    name="sample_histogram",
+    description="A sample time histogram",
     unit="ms",
 )
 
 app = FastAPI()
-#FastAPIInstrumentor.instrument_app(app)
+FastAPIInstrumentor.instrument_app(app)
 
-class Item(BaseModel):
-    name: str
-    price: float
-    id: int
-
-fake_items_db = [
-    {
-        "name": "Foo",
-        "price": 9.99,
-        "id": 999
-    },
-    {
-        "name": "Bar",
-        "price": 5.99,
-        "id": 555
-    }
-]
 
 @app.get("/hello")
 async def test():
     return {"message": "Hello World"}
 
-
 @app.get("/exception")
 async def exception():
     raise Exception("Hit an exception")
 
-@app.get("/items/")
-async def all_items(request: Request):
-    logger.info("all_items called")
-
+@app.exception_handler(StarletteHTTPException)
+async def http_exception_handler(request, exc):
     span = trace.get_current_span()
+    span.record_exception(exc)
+    span.set_status(trace.Status(trace.StatusCode.ERROR, str(exc)))
+    return PlainTextResponse(json.dumps({ "detail" : str(exc.detail) }), status_code=exc.status_code)
 
+@app.get("/fastapi_exception")
+async def fastapi_exception():
+    raise HTTPException(status_code=404, detail="FastAPI exception")
+
+@app.get("/custom_event")
+async def custom_event():
+    track_event("Custom event", {"key1": "value1", "key2": "value2"})
+    return {"message": "Custom event sent"}
+
+@app.get("/custom_dimension")
+async def custom_dimension():
+    span = trace.get_current_span()
+    span.set_attribute("CustomDimension1", "value1")
+    span.set_attribute("CustomDimension2", "value2")
+    return {"message": "Custom dimension set"}
+
+@app.get("/counter")
+async def counter():
+    sample_counter.add(1)
+    return {"message": "Counter incremented"}
+
+@app.get("/histogram")
+async def histogram():
+    sample_histogram.record(random.randint(1, 100))
+    return {"message": "Histogram value recorded"}
+
+@app.get("/user_id")
+async def user_id(request: Request):
+    span = trace.get_current_span()
     if "x-ms-client-principal-id" in request.headers:
         span.set_attribute("enduser.id", request.headers["x-ms-client-principal-id"])
     else:
         span.set_attribute("enduser.id", "anonymous")
+    return {"message": "User ID set"}
 
-    span.set_attribute("CustomDimension1", "Value1")
-
-    track_event("Test event", {"key1": "value1", "key2": "value2"})
-
-    for k, v in request.headers.items():
-        logger.info(f"{k}: {v}")
-
-    logger.info("Returning all items")
-    return fake_items_db
-
-@app.get("/items/{item_name}")
-async def read_item(request: Request, item_name: str):
-    logger.info(f"read_item called with {item_name}")
-    item = None
-    for i in fake_items_db:
-        if i["name"] == item_name:
-            item = i
-            break
-    if item is None:
-        logger.error("Item not found")
-        logger.exception("Item not found exception")
-        raise HTTPException(status_code=404, detail="Item not found")
-    logger.info(f"Returning item {item_name}")
-    query_counter.add(1)
-    query_histogram.record(random.randint(1, 500))
-    return item
-
-@app.post("/items/{item_name}")
-async def create_item(request: Request, item_name: str, item: Item):
-    logger.info(f"create_item called with {item_name}")
-    item = item.model_dump()
-    item["name"] = item_name
-    fake_items_db.append(item)
-    logger.info(f"Item {item_name} created")
-    create_counter.add(1)
-    creation_histogram.record(random.randint(1, 500))
-    return item
+@app.get("/span")
+async def span():
+    pre_time = random.randint(1, 2000)
+    child_time = random.randint(1, 2000)
+    post_time = random.randint(1, 2000)
+    logger.info(f"Sleeping for {pre_time}ms")
+    time.sleep(pre_time / 1000)
+    with tracer.start_as_current_span("child_span"):
+        logger.info(f"Sleeping for {child_time}ms")
+        time.sleep(child_time / 1000)
+    logger.info(f"Sleeping for {post_time}ms")
+    time.sleep(post_time / 1000)
+    return {"message": "Child span created"}
